@@ -1,0 +1,48 @@
+/**
+ * 基础样式 — 覆盖 Vite 默认样式
+ * 字体、颜色、基础元素由 global.css 和 antdTheme.ts 统一管理
+ */
+
+:root {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 重置 Vite 默认样式 */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: transparent;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* 修复 Vite 默认 h2 样式冲突 */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+#root {
+  max-width: 100%;
+  padding: 0;
+  height: 100vh;
+}

@@ -1,0 +1,68 @@
+{
+  "name": "openlist-back-work",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:test": "wrangler dev -c wrangler.test.jsonc",
+    "dev:page": "cd pages && npm run dev",
+    "dev:type": "wrangler types --env-interface CloudflareBindings",
+    "install:page": "cd pages && npm install",
+    "build:page": "cd pages && npm run build",
+    "deploy:page": "npm run install:page && npm run build:page",
+    "deploy": "npm run deploy:page && wrangler deploy --minify",
+    "deploy:worker": "wrangler deploy --minify",
+    "deploy:ci": "npm run build:page && wrangler deploy --minify",
+    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@edgeone/ef-types": "^1.0.5",
+    "@hono/node-server": "^1.16.0",
+    "@prisma/adapter-mariadb": "^7.4.2",
+    "@prisma/adapter-mssql": "^7.4.2",
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
+    "@types/pg": "^8.15.6",
+    "axios": "^1.12.0",
+    "axios-cookiejar-support": "^6.0.5",
+    "base64-js": "^1.5.1",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.3",
+    "fast-xml-parser": "^5.2.5",
+    "googleapis": "^105.0.0",
+    "hono": "^4.10.7",
+    "mariadb": "^3.4.5",
+    "mssql": "^12.1.1",
+    "node-rsa": "^1.1.1",
+    "pem": "^1.14.8",
+    "pg": "^8.16.3",
+    "prisma": "^7.4.2",
+    "tough-cookie": "^6.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/mssql": "^9.1.8",
+    "@types/node": "^24.10.1",
+    "@types/node-rsa": "^1.1.4",
+    "@types/xmldom": "^0.1.34",
+    "esbuild": "^0.25.5",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.5",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "wrangler": "^4.4.0"
+  },
+  "overrides": {
+    "esbuild": "^0.25.5",
+    "form-data": "^4.0.1",
+    "tough-cookie": "^6.0.0",
+    "glob": "^11.0.0",
+    "valibot": "^1.1.1",
+    "@prisma/dev": {
+      "hono": "^4.10.7"
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openlist-work",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-16",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+
+  // ── 环境变量 ──────────────────────────────────────────────────────────────
+  "vars": {
+    // ★ 必填：JWT 认证密钥（至少16位随机字符串，未配置将拒绝所有登录请求）
+    // 生成示例：openssl rand -hex 32
+    "JWT_SECRET": "",
+
+    // D1 是否启用（true=使用远程数据库/D1，false=仅使用KV）
+    "ENABLE_D1": true,
+    // 远程数据库连接地址（例如 Supabase PostgreSQL）。如果留空或填 "local://" 则使用下方绑定的 CF D1 本地数据库
+    "REMOTE_D1": "postgres://postgres.xxxx:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require",
+
+    // 媒体库刮削：TMDB API Key（可选，配置后视频类媒体可获取海报/简介/评分）
+    // 在 https://www.themoviedb.org/settings/api 免费申请
+    // 未配置时视频不刮削，音乐/书籍仍可正常刮削（使用免费公共 API）
+    "TMDB_API_KEY": ""
+    /* ── REMOTE_D1 连接串格式说明 ─────────────────────────────────────────
+       postgres://<user>:<pass>@<host>:<port>/<db>?sslmode=require  → Supabase / PostgreSQL (首选)
+       pgsql://<user>:<pass>@<host>:<port>/<db>          → PostgreSQL
+       local://                                          → 使用 CF D1 绑定
+       mysql://<user>:<pass>@<host>:<port>/<db>          → MySQL / MariaDB
+       maria://<user>:<pass>@<host>:<port>/<db>          → MariaDB（别名）
+       sqlserver://<host>:<port>;database=<db>;username=<u>;password=<p>
+    ──────────────────────────────────────────────────────────────────── */
+  },
+
+  // ── 静态资源（前端 SPA）────────────────────────────────────────────────────
+  // 前端执行 npm run deploy:page 后会将产物输出到 ./public
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // ── KV 命名空间 ───────────────────────────────────────────────────────────
+  // 用于存储会话、缓存等键值数据
+  // 在 Cloudflare 控制台创建 KV 命名空间后，将 ID 填入下方
+  "kv_namespaces": [
+    {
+      "binding": "KV_DATA",       // ← 请勿修改 binding 名称
+      "id": ""                    // ← 填入你在 CF 控制台创建的 KV 命名空间 ID
+    }
+  ],
+
+  // ── D1 数据库 ─────────────────────────────────────────────────────────────
+  // 仅当 REMOTE_D1 为空或 "local://" 时生效
+  // 在 Cloudflare 控制台创建 D1 数据库后，将名称和 UUID 填入下方
+  "d1_databases": [
+    {
+      "binding": "D1_DATA",       // ← 请勿修改 binding 名称
+      "database_name": "",        // ← 填入你在 CF 控制台创建的 D1 数据库名称
+      "database_id": ""           // ← 填入你在 CF 控制台创建的 D1 数据库 UUID
+    }
+  ],
+
+  // ── 可观测性（日志）─────────────────────────────────────────────────────────
+  "observability": {
+    "enabled": false,             // 生产环境建议开启以便排查问题
+    "head_sampling_rate": 1,      // 采样率，1 = 100%，请勿随意修改
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true
+    }
+  }
+}

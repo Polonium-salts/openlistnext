@@ -55,7 +55,23 @@ export const ObjStore = {
     setObjStore("obj", obj)
   },
   setRawUrl: (raw_url: string) => {
-    setObjStore("raw_url", raw_url)
+    // 本地代理下载路径（/api/raw、/api/d、/api/p）需要拼接 token，
+    // 因为浏览器原生请求（<a href>、<video src>、<img src>）无法携带 Authorization 头。
+    // 分享路径 /api/sd/ 由分享密码保护，不需要 token；外部云盘直链（http(s)://）也不需要。
+    let url = raw_url
+    if (
+      url &&
+      url.startsWith("/api/") &&
+      !url.startsWith("/api/sd/") &&
+      !url.startsWith("/api/share/") &&
+      !url.includes("token=")
+    ) {
+      const token = localStorage.getItem("token")
+      if (token) {
+        url += (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token)
+      }
+    }
+    setObjStore("raw_url", url)
   },
   setProvider: (provider: string) => {
     setObjStore("provider", provider)

@@ -25,6 +25,24 @@ export async function adminAuthMiddleware(
 }
 
 /**
+ * 从请求中提取 JWT token。
+ * 优先级：Authorization 头 > ?token= 查询参数。
+ * 查询参数用于浏览器原生下载/预览（<a href>、<video src>、<img src> 等）
+ * 无法携带自定义 Authorization 头的场景。
+ */
+function extractToken(c: Context): string | null {
+  const authHeader = c.req.header("Authorization")
+  if (authHeader) {
+    return authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : authHeader
+  }
+  const queryToken = c.req.query("token")
+  if (queryToken) return queryToken
+  return null
+}
+
+/**
  * 解析请求中的 JWT，将当前用户信息注入到 c.set("user", ...)。
  * - 未携带 token / token 无效 / 用户被禁用 → user = null
  * - 解析成功 → user 包含 role / permission / disabled / base_path
@@ -34,12 +52,9 @@ export async function authMiddleware(
   c: Context,
   next: () => Promise<void>,
 ) {
-  const authHeader = c.req.header("Authorization")
+  const token = extractToken(c)
   let user: UserPermissionObj | null = null
-  if (authHeader) {
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.substring(7)
-      : authHeader
+  if (token) {
     try {
       const payload = await verify(token, JWT_SECRET, "HS256")
       const db = await getDb((c as any).env)

@@ -10,16 +10,47 @@ import {
   putItem,
 } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
+import { authMiddleware } from "./middlewares"
+import {
+  canWrite,
+  canRename,
+  canRemove,
+  canMove,
+  canCopy,
+} from "../pkg/permission"
 
 export const fsRouter = new Hono()
+
+// 所有 /api/fs/* 路由先经过 authMiddleware 解析当前用户到 c.get("user")
+fsRouter.use("*", authMiddleware)
+
+// 辅助：判断是否为分享路径（分享路径由 resolveShare 自行做密码校验，允许匿名访问）
+function isSharePath(reqPath: string): boolean {
+  return reqPath.startsWith("/@s")
+}
+
+// 辅助：非分享路径的读操作要求已登录
+function requireAuthForRead(c: any, reqPath: string): Response | null {
+  if (isSharePath(reqPath)) return null
+  const user = c.get("user")
+  if (!user) {
+    return c.json(
+      { code: 401, message: "Unauthorized: login required", data: null },
+      401,
+    )
+  }
+  return null
+}
 
 // GET sub-directories of a path (used by FolderTree in metas/storages editors)
 fsRouter.post("/dirs", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
+  const authErr = requireAuthForRead(c, reqPath)
+  if (authErr) return authErr
   try {
     // Share path support for completeness
-    if (reqPath.startsWith("/@s")) {
+    if (isSharePath(reqPath)) {
       const shareRes = await resolveShare(reqPath, body.password || "", c.env)
       if (!shareRes.ok) {
         return c.json({ code: 400, message: shareRes.error, data: null })
@@ -61,7 +92,6 @@ fsRouter.post("/dirs", async (c) => {
         }))
       return c.json({ code: 200, message: "success", data: dirs })
     }
-
     const { content } = await listItems(reqPath)
     const dirs = content
       .filter((item: any) => item.is_dir)
@@ -83,9 +113,10 @@ fsRouter.post("/dirs", async (c) => {
 fsRouter.post("/list", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
+  const authErr = requireAuthForRead(c, reqPath)
+  if (authErr) return authErr
   const page = parseInt(body.page, 10) || 1
   const perPage = parseInt(body.per_page, 10) || 0
-
   const paginateItems = <T>(items: T[]) => {
     const total = items.length
     if (perPage <= 0) {
@@ -99,15 +130,13 @@ fsRouter.post("/list", async (c) => {
       total,
     }
   }
-
   try {
     // Share path: /@s/{shareId}/...
-    if (reqPath.startsWith("/@s")) {
+    if (isSharePath(reqPath)) {
       const shareRes = await resolveShare(reqPath, body.password || "", c.env)
       if (!shareRes.ok) {
         return c.json({ code: 400, message: shareRes.error, data: null })
       }
-
       // Multi-file share root → virtual list of the shared items
       if (shareRes.virtualList) {
         const items = []
@@ -166,7 +195,6 @@ fsRouter.post("/list", async (c) => {
           },
         })
       }
-
       // Mapped to a real path — fall through to normal listing
       const { content, provider } = await listItems(shareRes.realPath!)
       const normalized = content.map((item: any) => ({
@@ -194,7 +222,6 @@ fsRouter.post("/list", async (c) => {
         },
       })
     }
-
     const { content, provider, storage } = await listItems(reqPath)
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = content.map((item: any) => ({
@@ -207,7 +234,6 @@ fsRouter.post("/list", async (c) => {
       thumb: item.thumb || "",
       type: item.type ?? 0,
     }))
-
     let storagePageSize = 0
     if (storage) {
       storagePageSize = parseInt(storage.page_size, 10) || 0
@@ -221,7 +247,6 @@ fsRouter.post("/list", async (c) => {
         } catch {}
       }
     }
-
     const effectivePerPage =
       perPage > 0 ? perPage : storagePageSize > 0 ? storagePageSize : 0
     const paginateStorageItems = <T>(items: T[]) => {
@@ -237,8 +262,8 @@ fsRouter.post("/list", async (c) => {
         total,
       }
     }
-
     const { content: pagedContent, total } = paginateStorageItems(normalized)
+    const user = c.get("user")
     return c.json({
       code: 200,
       message: "success",
@@ -247,7 +272,7 @@ fsRouter.post("/list", async (c) => {
         total,
         readme: "",
         header: "",
-        write: true,
+        write: canWrite(user),
         write_content_bypass: false,
         provider,
         page_size: effectivePerPage > 0 ? effectivePerPage : undefined,
@@ -261,14 +286,15 @@ fsRouter.post("/list", async (c) => {
 fsRouter.post("/get", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
+  const authErr = requireAuthForRead(c, reqPath)
+  if (authErr) return authErr
   try {
     // Share path: /@s/{shareId}/...
-    if (reqPath.startsWith("/@s")) {
+    if (isSharePath(reqPath)) {
       const shareRes = await resolveShare(reqPath, body.password || "", c.env)
       if (!shareRes.ok) {
         return c.json({ code: 400, message: shareRes.error, data: null })
       }
-
       // Multi-file share root: report as a virtual folder so the frontend lists it
       if (shareRes.virtualList) {
         const shareId = reqPath.split("/").filter(Boolean)[1] || "share"
@@ -293,7 +319,6 @@ fsRouter.post("/get", async (c) => {
           },
         })
       }
-
       // Mapped to a real path — get with share-aware raw_url (/sd/{shareId}...)
       const shareId = reqPath.split("/").filter(Boolean)[1] || ""
       const { item, provider } = await getItem(shareRes.realPath!)
@@ -321,8 +346,8 @@ fsRouter.post("/get", async (c) => {
         },
       })
     }
-
     const { item, provider, rawUrl } = await getItem(reqPath)
+    const user = c.get("user")
     return c.json({
       code: 200,
       message: "success",
@@ -341,7 +366,7 @@ fsRouter.post("/get", async (c) => {
         header: "",
         provider,
         related: [],
-        write: true,
+        write: canWrite(user),
         write_content_bypass: false,
       },
     })
@@ -351,6 +376,13 @@ fsRouter.post("/get", async (c) => {
 })
 
 fsRouter.post("/mkdir", async (c) => {
+  const user = c.get("user")
+  if (!canWrite(user)) {
+    return c.json(
+      { code: 403, message: "Forbidden: no write permission", data: null },
+      403,
+    )
+  }
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
   try {
@@ -362,6 +394,13 @@ fsRouter.post("/mkdir", async (c) => {
 })
 
 fsRouter.post("/rename", async (c) => {
+  const user = c.get("user")
+  if (!canRename(user)) {
+    return c.json(
+      { code: 403, message: "Forbidden: no rename permission", data: null },
+      403,
+    )
+  }
   const { path: oldPath, name: newName } = await c.req.json().catch(() => ({}))
   try {
     await renameItem(oldPath, newName)
@@ -372,6 +411,13 @@ fsRouter.post("/rename", async (c) => {
 })
 
 fsRouter.post("/remove", async (c) => {
+  const user = c.get("user")
+  if (!canRemove(user)) {
+    return c.json(
+      { code: 403, message: "Forbidden: no delete permission", data: null },
+      403,
+    )
+  }
   const { dir, names } = await c.req.json().catch(() => ({}))
   try {
     await removeItems(dir, names)
@@ -382,6 +428,13 @@ fsRouter.post("/remove", async (c) => {
 })
 
 fsRouter.post("/move", async (c) => {
+  const user = c.get("user")
+  if (!canMove(user)) {
+    return c.json(
+      { code: 403, message: "Forbidden: no move permission", data: null },
+      403,
+    )
+  }
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await moveItems(src_dir, dst_dir, names)
@@ -392,6 +445,13 @@ fsRouter.post("/move", async (c) => {
 })
 
 fsRouter.post("/copy", async (c) => {
+  const user = c.get("user")
+  if (!canCopy(user)) {
+    return c.json(
+      { code: 403, message: "Forbidden: no copy permission", data: null },
+      403,
+    )
+  }
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await copyItems(src_dir, dst_dir, names)
@@ -402,6 +462,13 @@ fsRouter.post("/copy", async (c) => {
 })
 
 fsRouter.put("/put", async (c) => {
+  const user = c.get("user")
+  if (!canWrite(user)) {
+    return c.json(
+      { code: 403, message: "Forbidden: no write permission", data: null },
+      403,
+    )
+  }
   const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
   try {
     const buffer = await c.req.arrayBuffer()
@@ -413,11 +480,17 @@ fsRouter.put("/put", async (c) => {
 })
 
 fsRouter.post("/add_offline_download", async (c) => {
+  const user = c.get("user")
+  if (!canWrite(user)) {
+    return c.json(
+      { code: 403, message: "Forbidden: no write permission", data: null },
+      403,
+    )
+  }
   const { path: reqPath, urls } = await c.req.json().catch(() => ({}))
   if (!urls || urls.length === 0) {
     return c.json({ code: 400, message: "No URLs provided" })
   }
-
   /* 
   // Offline download is not supported in stateless Serverless environments 
   // as it requires a long-running background process or specialized task queue.

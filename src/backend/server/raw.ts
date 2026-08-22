@@ -3,6 +3,7 @@ import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
+import { authMiddleware } from "./middlewares"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -22,16 +23,17 @@ async function initNodeModules() {
 
 export const rawRouter = new Hono()
 
+// 所有下载路由先解析当前用户
+rawRouter.use("*", authMiddleware)
+
 rawRouter.get("/*", async (c) => {
   await initNodeModules()
-
   const isProxy =
     c.req.query("proxy") === "true" ||
     c.req.path.startsWith("/p") ||
     c.req.path.startsWith("/api/p") ||
     c.req.path.startsWith("/sd") ||
     c.req.path.startsWith("/api/sd")
-
   const rawPath = c.req.path
     .replace(/^\/api\/raw/, "")
     .replace(/^\/api\/d/, "")
@@ -41,14 +43,23 @@ rawRouter.get("/*", async (c) => {
     .replace(/^\/d/, "")
     .replace(/^\/sd/, "")
     .replace(/^\/p/, "")
-
   const reqPath0 = decodeURIComponent(rawPath)
+
+  // 分享下载 (/sd/...) 由 resolveShare 自行校验密码，允许匿名访问
+  const isSharePath =
+    c.req.path.startsWith("/api/sd") || c.req.path.startsWith("/sd")
+
+  // 非分享下载要求已登录
+  if (!isSharePath) {
+    const user = c.get("user")
+    if (!user) {
+      return c.text("Unauthorized: login required", 401)
+    }
+  }
 
   try {
     let reqPath = reqPath0
     // Share download: /sd/{shareId}/... — map to the real storage path
-    const isSharePath =
-      c.req.path.startsWith("/api/sd") || c.req.path.startsWith("/sd")
     if (isSharePath) {
       const shareRes = await resolveShare(
         reqPath,
@@ -63,18 +74,14 @@ rawRouter.get("/*", async (c) => {
       }
       reqPath = shareRes.realPath
     }
-
     const resolved = await resolvePath(reqPath)
-
     if (resolved.isVirtual || !resolved.physical) {
       return c.text("Cannot download virtual directory path", 400)
     }
-
     if (resolved.storage) {
       const normDriver = (resolved.storage.driver || "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "")
-
       // Remote cloud drivers: fetch download link via driver.get()
       if (normDriver !== "local") {
         try {
@@ -83,7 +90,6 @@ rawRouter.get("/*", async (c) => {
             resolved.storage,
           )
           const fileItem = await driver.get(reqPath, resolved.physical)
-
           if (fileItem && fileItem.raw_url) {
             if (isProxy) {
               console.log(
@@ -101,9 +107,7 @@ rawRouter.get("/*", async (c) => {
               // Forward Range header for video/audio/PDF seeking
               const rangeReq = c.req.header("Range")
               if (rangeReq) headers["Range"] = rangeReq
-
               let upstreamRes = await fetch(fileItem.raw_url, { headers })
-
               // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
               if (upstreamRes.status === 412) {
                 console.warn(
@@ -112,7 +116,6 @@ rawRouter.get("/*", async (c) => {
                 delete headers["Range"]
                 upstreamRes = await fetch(fileItem.raw_url, { headers })
               }
-
               // CORS headers
               c.header("Access-Control-Allow-Origin", "*")
               c.header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
@@ -120,7 +123,6 @@ rawRouter.get("/*", async (c) => {
                 "Access-Control-Expose-Headers",
                 "Content-Range, Accept-Ranges, Content-Length, Content-Disposition",
               )
-
               // Content-Type: prefer upstream, fallback by extension
               const extMap: Record<string, string> = {
                 pdf: "application/pdf",
@@ -145,7 +147,6 @@ rawRouter.get("/*", async (c) => {
                 "Content-Type",
                 upstreamRes.headers.get("content-type") || defaultContentType,
               )
-
               // Forward range/length headers
               const contentLength = upstreamRes.headers.get("content-length")
               if (contentLength) c.header("Content-Length", contentLength)
@@ -156,7 +157,6 @@ rawRouter.get("/*", async (c) => {
                 "Accept-Ranges",
                 upstreamRes.headers.get("accept-ranges") || "bytes",
               )
-
               // Forward caching headers
               const etag = upstreamRes.headers.get("etag")
               if (etag) c.header("ETag", etag)
@@ -169,7 +169,6 @@ rawRouter.get("/*", async (c) => {
               )
               if (contentDisposition)
                 c.header("Content-Disposition", contentDisposition)
-
               return c.body(upstreamRes.body as any, upstreamRes.status as any)
             } else {
               console.log(
@@ -192,23 +191,19 @@ rawRouter.get("/*", async (c) => {
         }
       }
     }
-
     // Fallback: Local file system streaming
     if (!fsPromises || !createReadStream) {
       return c.text("Local file streaming not supported in Edge Runtime", 500)
     }
-
     const stat = await fsPromises.stat(resolved.physical)
     if (stat.isDirectory()) {
       return c.text("Cannot download directory", 400)
     }
-
     c.header("Access-Control-Allow-Origin", "*")
     const rangeHeader = c.req.header("Range")
     if (rangeHeader) {
       const { start, end, chunksize } = parseRangeHeader(rangeHeader, stat.size)
       const stream = createReadStream(resolved.physical, { start, end })
-
       c.header("Content-Range", `bytes ${start}-${end}/${stat.size}`)
       c.header("Accept-Ranges", "bytes")
       c.header("Content-Length", chunksize.toString())

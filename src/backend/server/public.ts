@@ -63,6 +63,7 @@ publicRouter.get("/settings", async (c) => {
     // --- Global ---
     hide_files: "/\\.DS_Store/i",
     link_expiration: "0",
+    token_expiration: "604800",
     sign_all: "false",
     filename_char_mapping: "{}",
     forward_direct_link_params: "false",

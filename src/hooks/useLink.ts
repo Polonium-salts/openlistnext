@@ -50,6 +50,13 @@ export const getLinkByDirAndObj = (
   if (type !== "preview" && !isShare && obj.sign) {
     ans += `${QP()}sign=${obj.sign}`
   }
+  // 非分享、非预览链接拼接登录 token，使复制的链接可直接下载
+  if (type !== "preview" && !isShare) {
+    const token = localStorage.getItem("token")
+    if (token && !ans.includes("token=")) {
+      ans += `${QP()}token=${token}`
+    }
+  }
   if (type !== "preview" && isShare) {
     const pwd = cookieStorage.getItem("browser-password") || ""
     if (pwd) {

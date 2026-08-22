@@ -56,6 +56,7 @@
   "ldap_user_search_base": "Ldap user search base",
   "ldap_user_search_filter": "Ldap user search filter",
   "link_expiration": "Link expiration",
+  "token_expiration": "Token expiration (seconds)",
   "logo": "Logo",
   "main_color": "Main color",
   "max_client_download_speed": "Max client download speed",

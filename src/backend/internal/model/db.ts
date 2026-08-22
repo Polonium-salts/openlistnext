@@ -326,6 +326,14 @@ export const defaultDb = {
       flag: 0,
     },
     {
+      key: "token_expiration",
+      value: "604800",
+      type: "number",
+      help: "JWT Token Expiration in Seconds (default 7 days)",
+      group: 4,
+      flag: 0,
+    },
+    {
       key: "sign_all",
       value: "false",
       type: "bool",

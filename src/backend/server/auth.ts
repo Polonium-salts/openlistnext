@@ -5,6 +5,20 @@ import { JWT_SECRET } from "./middlewares"
 
 export const authRouter = new Hono()
 
+// 从数据库设置中读取 token 有效期（秒），默认 7 天
+async function getTokenExpirationSeconds(envCtx: any): Promise<number> {
+  try {
+    const db = await getDb(envCtx)
+    const setting = (db.settings || []).find(
+      (s: any) => s.key === "token_expiration",
+    )
+    const seconds = setting ? parseInt(setting.value, 10) : 604800
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : 604800
+  } catch {
+    return 604800
+  }
+}
+
 // Helper to hash password matching OpenListNext/AList specification
 export async function hashPassword(plainPassword: string): Promise<string> {
   const hash_salt = "https://github.com/alist-org/alist"
@@ -75,11 +89,12 @@ authRouter.post("/login", async (c) => {
         (rawPassword === "admin" || hashedPassword === defaultAdminHash))
 
     if (isPasswordValid) {
+      const expSeconds = await getTokenExpirationSeconds(c.env)
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
         role: matchedUser.role,
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+        exp: Math.floor(Date.now() / 1000) + expSeconds,
       }
       const token = await sign(payload, JWT_SECRET)
       return c.json({
@@ -120,11 +135,12 @@ authRouter.post("/login/hash", async (c) => {
         inputHash === defaultAdminHash)
 
     if (isHashValid) {
+      const expSeconds = await getTokenExpirationSeconds(c.env)
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
         role: matchedUser.role,
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+        exp: Math.floor(Date.now() / 1000) + expSeconds,
       }
       const token = await sign(payload, JWT_SECRET)
       return c.json({

@@ -85,6 +85,8 @@ export const normalizeDriver = (driverName: string): string => {
   if (norm.startsWith("115")) return "115Open"
   if (norm.startsWith("123")) return "123Pan"
   if (norm.includes("aliyun")) return "AliyundriveOpen"
+  if (norm === "baiduphoto" || norm.startsWith("baiduphoto"))
+    return "BaiduPhoto"
   if (norm.startsWith("baidu")) return "BaiduNetdisk"
   if (
     norm.startsWith("189") ||
@@ -202,7 +204,11 @@ adminRouter.post("/storage/create", async (c) => {
     }
   }
   const mountPath =
-    "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
+    "/" +
+    String(rawMount || "")
+      .split("/")
+      .filter(Boolean)
+      .join("/")
   if (
     db.storages.some(
       (s: any) =>
@@ -277,7 +283,11 @@ adminRouter.post("/storage/update", async (c) => {
   }
   const mountPath =
     String(rawMount || "").trim() !== ""
-      ? "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
+      ? "/" +
+        String(rawMount || "")
+          .split("/")
+          .filter(Boolean)
+          .join("/")
       : undefined
 
   if (mountPath) {
@@ -1044,6 +1054,59 @@ const driverConfigs: Record<string, any> = {
     ],
     config: {
       name: "BaiduNetdisk",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
+  BaiduPhoto: {
+    name: "BaiduPhoto",
+    default_mount_path: "/baiduphoto",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "cookie",
+        type: "text",
+        default: "",
+        required: true,
+        help: "百度网盘 Cookie（必填）。从 photo.baidu.com 或 pan.baidu.com 登录后获取。",
+      },
+      {
+        name: "show_type",
+        type: "select",
+        options: "root,root_only_album,root_only_file",
+        default: "root",
+        required: false,
+        help: "展示模式：root（相册+文件）/ root_only_album（仅相册）/ root_only_file（仅文件）",
+      },
+      {
+        name: "album_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "相薄ID。默认为空时,直接显示根目录全部相册。如果挂载单个相册时需填写如下内容: 相薄ID 应填 {album_id}|{tid} 示例: 4021858707431029901|316519298447849660。 {album_id}: 进入你需要挂载的相册后,查看顶部链接/album 后的ID就是 {album_id}, 例如 https://photo.baidu.com/photo/web/album/4021858707431029901 中 4021858707431029901 就是 {album_id}。 {tid}: 访问 https://photo.baidu.com/youai/album/v1/list?limit=1000 获取, 进入界面后 Ctrl+F 搜索上面的ID, 在下面数几行就可以看到对应的 {tid}。",
+      },
+      {
+        name: "delete_origin",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "删除相册文件时同时删除原图",
+      },
+      {
+        name: "upload_thread",
+        type: "string",
+        default: "3",
+        required: false,
+        help: "上传线程数，范围 1~32",
+      },
+    ],
+    config: {
+      name: "BaiduPhoto",
       local_sort: true,
       only_local: false,
       only_proxy: true,

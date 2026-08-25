@@ -1758,6 +1758,20 @@
     "use_dynamic_upload_api": "Dynamically Get Upload API",
     "use_online_api": "Use Online API to Refresh Token"
   },
+  "BaiduPhoto": {
+    "album_id": "Album ID",
+    "album_id-tips": "Leave empty to show all albums in root. To mount a single album, fill {album_id}|{tid}, e.g. 4021858707431029901|316519298447849660. {album_id}: the ID after /album in the URL, e.g. 4021858707431029901 from https://photo.baidu.com/photo/web/album/4021858707431029901. {tid}: open https://photo.baidu.com/youai/album/v1/list?limit=1000, search the album_id with Ctrl+F, the corresponding {tid} is a few lines below.",
+    "cookie": "Cookie",
+    "cookie-tips": "Required. Get it after logging in at photo.baidu.com or pan.baidu.com.",
+    "delete_origin": "Also delete original on removal",
+    "show_type": "Display mode",
+    "show_types": {
+      "root": "Album + File",
+      "root_only_album": "Album only",
+      "root_only_file": "File only"
+    },
+    "upload_thread": "Upload Threads"
+  },
   "115Open": {
     "access_token": "Access Token",
     "access_token-tips": "Required. Get it from 115 Open Platform; auto-refreshed via refresh_token when expired.",

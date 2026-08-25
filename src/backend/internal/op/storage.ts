@@ -10,6 +10,7 @@ import {
   BaiduDriver,
   normalizeBaiduAddition,
 } from "../../drivers/baidu_netdisk/driver"
+import { BaiduPhotoDriver } from "../../drivers/baidu_photo/driver"
 import { Pan115Driver } from "../../drivers/115open/driver"
 import { GithubDriver } from "../../drivers/github/driver"
 import {
@@ -239,10 +240,17 @@ async function createDriver(
     })
     await driver.init?.()
   } else if (
+    normDriver === "baiduphoto" ||
+    normDriver === "baiduphotoalbum" ||
+    normDriver === "baiduyikexiangce"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new BaiduPhotoDriver(addition)
+    await driver.init?.()
+  } else if (
     normDriver === "baidunetdisk" ||
     normDriver === "baidu" ||
     normDriver === "baiduyun" ||
-    normDriver === "baiduphoto" ||
     normDriver === "baidushare" ||
     normDriver.startsWith("baidu")
   ) {

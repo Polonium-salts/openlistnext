@@ -157,13 +157,21 @@ rawRouter.get("/*", async (c) => {
               const rangeReq = c.req.header("Range")
               if (rangeReq) headers["Range"] = rangeReq
 
-              try {
-                assertSafeUrl(fileItem.raw_url, "Proxy download")
-              } catch (ssrfErr: any) {
-                return c.text(ssrfErr.message || "SSRF blocked", 403)
+              let upstreamRes: Response
+              if (typeof (driver as any).fetchStream === "function") {
+                upstreamRes = await (driver as any).fetchStream(
+                  reqPath,
+                  resolved.physical,
+                  headers,
+                )
+              } else {
+                try {
+                  assertSafeUrl(fileItem.raw_url, "Proxy download")
+                } catch (ssrfErr: any) {
+                  return c.text(ssrfErr.message || "SSRF blocked", 403)
+                }
+                upstreamRes = await fetch(fileItem.raw_url, { headers })
               }
-
-              let upstreamRes = await fetch(fileItem.raw_url, { headers })
 
               // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
               if (upstreamRes.status === 412) {
@@ -171,7 +179,15 @@ rawRouter.get("/*", async (c) => {
                   `[rawRouter] Upstream returned 412 for '${reqPath}', retrying without Range header...`,
                 )
                 delete headers["Range"]
-                upstreamRes = await fetch(fileItem.raw_url, { headers })
+                if (typeof (driver as any).fetchStream === "function") {
+                  upstreamRes = await (driver as any).fetchStream(
+                    reqPath,
+                    resolved.physical,
+                    headers,
+                  )
+                } else {
+                  upstreamRes = await fetch(fileItem.raw_url, { headers })
+                }
               }
 
               // CORS headers

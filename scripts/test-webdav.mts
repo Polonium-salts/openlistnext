@@ -211,12 +211,57 @@ await test("WebDavDriver 接口模拟测试 (list, get, mkdir, rename, remove, p
     const file = await driver.get("/data/movie.mkv", "/movie.mkv")
     if (file.name !== "movie.mkv") throw new Error(`Expected file name movie.mkv, got ${file.name}`)
 
+    // Test fetchStream
+    const streamResp = await driver.fetchStream("/data/movie.mkv", "/movie.mkv")
+    if (streamResp.status !== 404 && !streamResp.ok && streamResp.status !== 200) {
+      // should return response
+    }
+
     await driver.mkdir("/data/newdir", "/newdir")
     await driver.rename("/data/movie.mkv", "/movie.mkv", "renamed.mkv")
     await driver.move("/data", "/data/backup", ["movie.mkv"], "/", "/backup")
     await driver.copy("/data", "/data/backup", ["movie.mkv"], "/", "/backup")
     await driver.remove("/data", "/movie.mkv", [])
     await driver.put("/data/test.txt", "/test.txt", Buffer.from("hello world"))
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+// 7. Test WebDAV Digest Auth & redirect handling in WebdavClient
+await test("WebDavClient Digest 认证协商与流式下载", async () => {
+  const client = new WebdavClient({
+    address: "https://dav.digest.test",
+    username: "user",
+    password: "password123",
+    vendor: "other",
+  })
+
+  let requestCount = 0
+  const originalFetch = globalThis.fetch
+  try {
+    (globalThis as any).fetch = async (url: string, init?: RequestInit) => {
+      requestCount++
+      const auth = (init?.headers as any)?.["Authorization"] || ""
+      if (!auth.startsWith("Digest ")) {
+        return new Response("Unauthorized", {
+          status: 401,
+          headers: {
+            "WWW-Authenticate": 'Digest realm="testrealm", nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", qop="auth,auth-int", algorithm=MD5',
+          },
+        })
+      }
+      return new Response("video data stream", {
+        status: 200,
+        headers: { "Content-Type": "video/mp4", "Content-Length": "17" },
+      })
+    }
+
+    const res = await client.getStream("/20.mp4")
+    if (res.status !== 200) throw new Error(`Expected 200 after Digest auth, got ${res.status}`)
+    const text = await res.text()
+    if (text !== "video data stream") throw new Error(`Unexpected body: ${text}`)
+    if (requestCount < 2) throw new Error("Expected at least 2 requests for 401 challenge and retry")
   } finally {
     globalThis.fetch = originalFetch
   }

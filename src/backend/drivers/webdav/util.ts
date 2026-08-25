@@ -180,6 +180,13 @@ export function parseMultistatusXml(
   return { self: selfItem, items }
 }
 
+function toBase64(str: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(str, "utf-8").toString("base64")
+  }
+  return btoa(unescape(encodeURIComponent(str)))
+}
+
 /**
  * Digest Auth Support
  */
@@ -193,11 +200,13 @@ interface DigestParts {
 
 function parseDigestChallenge(header: string): DigestParts {
   const parts: DigestParts = {}
-  const matchParts = header.replace(/^digest\s+/i, "").split(/,\s*/)
+  const matchParts = header
+    .replace(/^digest\s+/i, "")
+    .split(/,\s*(?=[a-zA-Z0-9_-]+=)/)
   for (const part of matchParts) {
     const eqIdx = part.indexOf("=")
     if (eqIdx !== -1) {
-      const key = part.slice(0, eqIdx).trim()
+      const key = part.slice(0, eqIdx).trim().toLowerCase()
       const val = part
         .slice(eqIdx + 1)
         .trim()
@@ -225,7 +234,17 @@ function computeDigestAuth(
   const realm = parts.realm || ""
   const nonce = parts.nonce || ""
   const algorithm = (parts.algorithm || "MD5").toUpperCase()
-  const qop = parts.qop || ""
+
+  // Select a supported qop from the server's list (e.g. "auth,auth-int" -> "auth")
+  let chosenQop = ""
+  if (parts.qop) {
+    const qops = parts.qop.split(",").map((q) => q.trim().toLowerCase())
+    if (qops.includes("auth")) {
+      chosenQop = "auth"
+    } else if (qops.includes("auth-int")) {
+      chosenQop = "auth-int"
+    }
+  }
 
   let ha1 = ""
   if (algorithm === "MD5" || algorithm === "") {
@@ -236,25 +255,25 @@ function computeDigestAuth(
   }
 
   let ha2 = ""
-  if (qop === "auth" || qop === "") {
+  if (chosenQop === "auth" || chosenQop === "") {
     ha2 = CryptoJS.MD5(`${method}:${uri}`).toString()
   }
 
   let response = ""
-  if (!qop) {
+  if (!chosenQop) {
     response = CryptoJS.MD5(`${ha1}:${nonce}:${ha2}`).toString()
   } else {
     response = CryptoJS.MD5(
-      `${ha1}:${nonce}:${ncStr}:${cnonce}:${qop}:${ha2}`,
+      `${ha1}:${nonce}:${ncStr}:${cnonce}:${chosenQop}:${ha2}`,
     ).toString()
   }
 
   let authHeader = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`
-  if (algorithm) {
-    authHeader += `, algorithm=${algorithm}`
+  if (parts.algorithm) {
+    authHeader += `, algorithm=${parts.algorithm}`
   }
-  if (qop) {
-    authHeader += `, qop=${qop}, nc=${ncStr}, cnonce="${cnonce}"`
+  if (chosenQop) {
+    authHeader += `, qop=${chosenQop}, nc=${ncStr}, cnonce="${cnonce}"`
   }
   if (parts.opaque) {
     authHeader += `, opaque="${parts.opaque}"`
@@ -450,9 +469,7 @@ export class WebdavClient {
         this.ncCount,
       )
     } else if (this.username || this.password) {
-      const basicToken = btoa(
-        unescape(encodeURIComponent(`${this.username}:${this.password}`)),
-      )
+      const basicToken = toBase64(`${this.username}:${this.password}`)
       headers["Authorization"] = `Basic ${basicToken}`
     }
     return headers
@@ -467,19 +484,43 @@ export class WebdavClient {
       redirect?: RequestRedirect
     } = {},
   ): Promise<Response> {
-    const fullUrl = this.buildUrl(remotePath)
-    const urlObj = new URL(fullUrl)
-    const uri = urlObj.pathname + urlObj.search
+    let fullUrl = this.buildUrl(remotePath)
+    let urlObj = new URL(fullUrl)
+    let uri = urlObj.pathname + urlObj.search
 
     const authHeaders = this.getAuthHeaders(method, uri)
-    const headers = { ...authHeaders, ...(options.headers || {}) }
+    let headers = { ...authHeaders, ...(options.headers || {}) }
 
+    // Use manual redirect handling so that Authorization headers are not stripped across redirects
     let resp = await fetch(fullUrl, {
       method,
       headers,
       body: options.body,
-      redirect: options.redirect || "follow",
+      redirect: "manual",
     })
+
+    // Handle 301, 302, 303, 307, 308 redirects while keeping auth headers
+    let redirectCount = 0
+    while (
+      resp.status >= 300 &&
+      resp.status < 400 &&
+      resp.headers.get("location") &&
+      redirectCount < 5
+    ) {
+      redirectCount++
+      const location = resp.headers.get("location")!
+      fullUrl = new URL(location, fullUrl).toString()
+      urlObj = new URL(fullUrl)
+      uri = urlObj.pathname + urlObj.search
+      const nextAuth = this.getAuthHeaders(method, uri)
+      headers = { ...headers, ...nextAuth }
+      resp = await fetch(fullUrl, {
+        method,
+        headers,
+        body: options.body,
+        redirect: "manual",
+      })
+    }
 
     // Handle 401 Digest Auth negotiation
     if (resp.status === 401 && !this.isSharepoint) {
@@ -503,12 +544,22 @@ export class WebdavClient {
           method,
           headers: retryHeaders,
           body: options.body,
-          redirect: options.redirect || "follow",
+          redirect: "follow",
         })
       }
     }
 
     return resp
+  }
+
+  /**
+   * Get file content stream with full authentication & range support
+   */
+  async getStream(
+    remotePath: string,
+    headers?: Record<string, string>,
+  ): Promise<Response> {
+    return this.request("GET", remotePath, { headers })
   }
 
   /**

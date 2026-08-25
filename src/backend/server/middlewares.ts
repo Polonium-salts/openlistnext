@@ -182,19 +182,42 @@ export async function getUserFromContext(c: Context): Promise<{
     const user = (db.users || []).find(
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
-    if (!user || user.disabled) return null
-    return {
-      id: user.id,
-      role: user.role,
-      permission: user.permission ?? 0,
-      disabled: !!user.disabled,
-      username: user.username,
-      base_path: user.base_path || "/",
-      sso_id: user.sso_id || "",
-      allow_ldap: !!user.allow_ldap,
-      otp_secret: user.otp_secret,
+    if (user && !user.disabled) {
+      return {
+        id: user.id,
+        role: user.role,
+        permission: user.permission ?? 0,
+        disabled: !!user.disabled,
+        username: user.username,
+        base_path: user.base_path || "/",
+        sso_id: user.sso_id || "",
+        allow_ldap: !!user.allow_ldap,
+        otp_secret: user.otp_secret,
+      }
     }
-  } catch {
-    return null
-  }
+  } catch {}
+
+  // Fallback to guest user if token was invalid/expired but guest browsing is enabled
+  try {
+    const db = await getDb(c.env)
+    let guest = (db.users || []).find((u: any) => u && u.username === "guest")
+    if (!guest) {
+      ensureDefaultUsers(db)
+      guest = (db.users || []).find((u: any) => u && u.username === "guest")
+    }
+    if (guest && !guest.disabled) {
+      return {
+        id: guest.id,
+        role: guest.role ?? 1,
+        permission: guest.permission ?? 0,
+        disabled: !!guest.disabled,
+        username: guest.username,
+        base_path: guest.base_path || "/",
+        sso_id: guest.sso_id || "",
+        allow_ldap: !!guest.allow_ldap,
+        otp_secret: guest.otp_secret,
+      }
+    }
+  } catch {}
+  return null
 }

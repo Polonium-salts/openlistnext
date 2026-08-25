@@ -151,4 +151,13 @@ export class WebdavDriver implements StorageDriver {
     const remotePath = this.getRemotePath(physicalPath)
     await this.client.put(remotePath, content)
   }
+
+  async fetchStream(
+    virtualPath: string,
+    physicalPath: string,
+    headers?: Record<string, string>,
+  ): Promise<Response> {
+    const remotePath = this.getRemotePath(physicalPath)
+    return this.client.getStream(remotePath, headers)
+  }
 }

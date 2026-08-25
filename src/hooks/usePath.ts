@@ -140,9 +140,19 @@ export const usePath = () => {
           let rawUrl = data.raw_url
           if (rawUrl) {
             try {
-              const token = sessionStorage.getItem("token") || localStorage.getItem("token") || ""
-              if (token) {
-                rawUrl += (rawUrl.includes("?") ? "&" : "?") + `token=${encodeURIComponent(token)}`
+              if (data.sign && !rawUrl.includes("sign=")) {
+                rawUrl +=
+                  (rawUrl.includes("?") ? "&" : "?") +
+                  `sign=${encodeURIComponent(data.sign)}`
+              }
+              const token =
+                sessionStorage.getItem("token") ||
+                localStorage.getItem("token") ||
+                ""
+              if (token && !rawUrl.includes("token=")) {
+                rawUrl +=
+                  (rawUrl.includes("?") ? "&" : "?") +
+                  `token=${encodeURIComponent(token)}`
               }
             } catch {}
           }

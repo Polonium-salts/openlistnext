@@ -79,13 +79,13 @@ export async function hashPassword(plainPassword: string): Promise<string> {
 // Ensure admin user exists in DB KV space with a default password if unset
 export async function getOrInitUsers(envCtx: any) {
   const db = await getDb(envCtx)
+  const envPass =
+    (envCtx && envCtx.ADMIN_PASSWORD) ||
+    (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
+    ""
   if (!db.users || db.users.length === 0) {
     // 默认管理员密码：优先环境变量 ADMIN_PASSWORD（推荐 `wrangler secret put`），
     // 未配置时使用默认 admin（AList 兼容），首次登录后应立即修改。
-    const envPass =
-      (envCtx && envCtx.ADMIN_PASSWORD) ||
-      (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
-      ""
     const defaultAdminHash = await hashPassword(envPass || "admin")
     db.users = [
       {
@@ -116,16 +116,18 @@ export async function getOrInitUsers(envCtx: any) {
     await saveDb(db, envCtx)
   } else {
     const adminUser = db.users.find((u: any) => u.username === "admin")
-    if (
-      adminUser &&
-      (!adminUser.password || String(adminUser.password).trim() === "")
-    ) {
-      const envPass =
-        (envCtx && envCtx.ADMIN_PASSWORD) ||
-        (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
-        ""
-      adminUser.password = await hashPassword(envPass || "admin")
-      await saveDb(db, envCtx)
+    if (adminUser) {
+      if (!adminUser.password || String(adminUser.password).trim() === "") {
+        adminUser.password = await hashPassword(envPass || "admin")
+        await saveDb(db, envCtx)
+      } else if (envPass && envPass.trim() !== "") {
+        // 如果环境变量配置了 ADMIN_PASSWORD，优先同步更新为环境变量的密码
+        const expectedHash = await hashPassword(envPass)
+        if (adminUser.password !== expectedHash) {
+          adminUser.password = expectedHash
+          await saveDb(db, envCtx)
+        }
+      }
     }
   }
   return { db, users: db.users }
@@ -199,17 +201,48 @@ authRouter.post("/login", async (c) => {
   }
 
   const hashedPassword = await hashPassword(rawPassword)
-
-  const { users } = await getOrInitUsers(c.env)
+  const { users, db } = await getOrInitUsers(c.env)
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
   )
 
   if (matchedUser) {
-    const userPass = matchedUser.password || ""
-    const isPasswordValid =
-      userPass !== "" && userPass.length === 64 && userPass === hashedPassword
+    const userPass = String(matchedUser.password || "")
+      .trim()
+      .toLowerCase()
+    let isPasswordValid = false
+
+    if (userPass.length === 64 && userPass === hashedPassword) {
+      isPasswordValid = true
+    } else if (userPass.length !== 64) {
+      // 兼容数据库中存有明文密码或未哈希密码的情况，自动迁移升级
+      if (
+        userPass === rawPassword.toLowerCase() ||
+        (await hashPassword(userPass)) === hashedPassword
+      ) {
+        isPasswordValid = true
+        matchedUser.password = hashedPassword
+        await saveDb(db, c.env)
+      }
+    }
+
+    // 兼容环境变量 ADMIN_PASSWORD 配置
+    if (!isPasswordValid && matchedUser.username === "admin") {
+      const envPass =
+        (c.env && (c.env as any).ADMIN_PASSWORD) ||
+        (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
+        ""
+      if (
+        envPass &&
+        (rawPassword === envPass ||
+          hashedPassword === (await hashPassword(envPass)))
+      ) {
+        isPasswordValid = true
+        matchedUser.password = hashedPassword
+        await saveDb(db, c.env)
+      }
+    }
 
     if (isPasswordValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)
@@ -261,7 +294,7 @@ authRouter.post("/login/hash", async (c) => {
     )
   }
 
-  const { users } = await getOrInitUsers(c.env)
+  const { users, db } = await getOrInitUsers(c.env)
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
@@ -271,7 +304,43 @@ authRouter.post("/login/hash", async (c) => {
     const userPass = String(matchedUser.password || "")
       .trim()
       .toLowerCase()
-    const isHashValid = userPass.length === 64 && inputHash === userPass
+    let isHashValid = false
+
+    if (userPass.length === 64 && inputHash === userPass) {
+      isHashValid = true
+    } else if (userPass.length !== 64) {
+      // 兼容数据库存有明文密码（例如 "admin"），并自动迁移升级为 hash
+      const hashedDbPass = await hashPassword(userPass)
+      if (hashedDbPass === inputHash) {
+        isHashValid = true
+        matchedUser.password = inputHash
+        await saveDb(db, c.env)
+      }
+    }
+
+    // 兼容环境变量 ADMIN_PASSWORD 覆盖
+    if (!isHashValid && matchedUser.username === "admin") {
+      const envPass =
+        (c.env && (c.env as any).ADMIN_PASSWORD) ||
+        (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
+        ""
+      if (envPass) {
+        const envHash = await hashPassword(envPass)
+        if (envHash === inputHash) {
+          isHashValid = true
+          matchedUser.password = inputHash
+          await saveDb(db, c.env)
+        }
+      } else {
+        // 如果是首次或默认未修改，允许默认 admin 匹配并同步
+        const defaultAdminHash = await hashPassword("admin")
+        if (defaultAdminHash === inputHash && (!userPass || userPass === "")) {
+          isHashValid = true
+          matchedUser.password = defaultAdminHash
+          await saveDb(db, c.env)
+        }
+      }
+    }
 
     if (isHashValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)

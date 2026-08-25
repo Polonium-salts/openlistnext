@@ -1,5 +1,32 @@
 // Global default configuration payload for Cloudflare Workers
 export const defaultDb = {
+  users: [
+    {
+      id: 1,
+      username: "admin",
+      password:
+        "6fcb57cd10b2c11d765dcf16148d99130afd895082af83725ee8bb181b1d2b0f",
+      role: 2,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: 2,
+      username: "guest",
+      password: "",
+      role: 1,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: "2026-01-01T00:00:00.000Z",
+    },
+  ],
   settings: [
     // Group 1: SITE (https://doc.oplist.org/configuration/site)
     {
@@ -604,32 +631,6 @@ export const defaultDb = {
     },
   ],
   storages: [],
-  users: [
-    {
-      id: 1,
-      username: "admin",
-      password: "",
-      role: 2,
-      permission: 0,
-      base_path: "/",
-      disabled: false,
-      sso_id: "",
-      allow_ldap: false,
-      pwd_update_at: new Date().toISOString(),
-    },
-    {
-      id: 2,
-      username: "guest",
-      password: "",
-      role: 1,
-      permission: 0,
-      base_path: "/",
-      disabled: false,
-      sso_id: "",
-      allow_ldap: false,
-      pwd_update_at: new Date().toISOString(),
-    },
-  ],
   metas: [],
   shares: [],
   plugins: [],
@@ -1023,6 +1024,47 @@ const ensureDefaultPlugins = (db: any) => {
   }
 }
 
+export const ensureDefaultUsers = (db: any) => {
+  if (!db) return
+  if (!db.users || !Array.isArray(db.users)) {
+    db.users = []
+  }
+
+  let admin = db.users.find((u: any) => u && u.username === "admin")
+  if (!admin) {
+    admin = {
+      id: 1,
+      username: "admin",
+      password:
+        "6fcb57cd10b2c11d765dcf16148d99130afd895082af83725ee8bb181b1d2b0f",
+      role: 2,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: new Date().toISOString(),
+    }
+    db.users.unshift(admin)
+  }
+
+  const guest = db.users.find((u: any) => u && u.username === "guest")
+  if (!guest) {
+    db.users.push({
+      id: 2,
+      username: "guest",
+      password: "",
+      role: 1,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: new Date().toISOString(),
+    })
+  }
+}
+
 export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -1036,6 +1078,7 @@ export const getDb = async (envCtx?: any) => {
       if (kvConfig) {
         memoryDb = kvConfig
         ensureDefaultSettings(memoryDb)
+        ensureDefaultUsers(memoryDb)
         ensureDefaultStorages(memoryDb)
         ensureDefaultShares(memoryDb)
         ensureDefaultPlugins(memoryDb)
@@ -1048,6 +1091,7 @@ export const getDb = async (envCtx?: any) => {
 
   if (memoryDb) {
     ensureDefaultSettings(memoryDb)
+    ensureDefaultUsers(memoryDb)
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
     ensureDefaultPlugins(memoryDb)
@@ -1063,6 +1107,7 @@ export const getDb = async (envCtx?: any) => {
     try {
       memoryDb = JSON.parse(process.env.DATABASE_JSON)
       ensureDefaultSettings(memoryDb)
+      ensureDefaultUsers(memoryDb)
       ensureDefaultStorages(memoryDb)
       ensureDefaultShares(memoryDb)
       ensureDefaultPlugins(memoryDb)
@@ -1074,6 +1119,7 @@ export const getDb = async (envCtx?: any) => {
 
   // Priority 3: In-Memory DB
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
+  ensureDefaultUsers(memoryDb)
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
   ensureDefaultPlugins(memoryDb)

@@ -1,7 +1,7 @@
 import { Context } from "hono"
 import { verify } from "hono/jwt"
 import { checkAdminAuth, isStaticApiToken } from "../pkg/utils"
-import { getDb } from "../internal/model/db"
+import { getDb, ensureDefaultUsers } from "../internal/model/db"
 
 // 不再硬编码 JWT 密钥。优先使用环境变量 JWT_SECRET（推荐在生产配置），
 // 否则从 KV 持久化一个随机密钥（首次生成后复用，重启不失效），
@@ -150,7 +150,11 @@ export async function getUserFromContext(c: Context): Promise<{
   if (!authHeader) {
     try {
       const db = await getDb(c.env)
-      const guest = (db.users || []).find((u: any) => u.username === "guest")
+      let guest = (db.users || []).find((u: any) => u && u.username === "guest")
+      if (!guest) {
+        ensureDefaultUsers(db)
+        guest = (db.users || []).find((u: any) => u && u.username === "guest")
+      }
       if (guest && !guest.disabled) {
         return {
           id: guest.id,

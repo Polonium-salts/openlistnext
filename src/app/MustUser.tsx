@@ -3,7 +3,12 @@ import { Error, FullScreenLoading } from "~/components"
 import { useFetch, useT, useRouter } from "~/hooks"
 import { Me, setMe } from "~/store"
 import { PResp, UserMethods } from "~/types"
-import { r, handleResp, handleRespWithoutAuthAndNotify } from "~/utils"
+import {
+  r,
+  handleResp,
+  handleRespWithoutAuthAndNotify,
+  changeToken,
+} from "~/utils"
 
 const MustUser = (props: { children: JSXElement }) => {
   const t = useT()
@@ -43,7 +48,19 @@ const UserOrGuest = (props: { children: JSXElement }) => {
   const [loading, data] = useFetch((): PResp<Me> => r.get("/me"), true)
   const [skipLogin, setSkipLogin] = createSignal(false)
   onMount(async () => {
-    const res = await data()
+    let res = await data()
+
+    // 如果本地有过期/无效 token 导致 401，清除无效 token 并重试获取 guest 身份
+    if ((!res || res.code !== 200) && typeof window !== "undefined") {
+      const _store =
+        typeof sessionStorage !== "undefined" ? sessionStorage : localStorage
+      const oldToken = _store.getItem("token")
+      if (oldToken) {
+        changeToken("")
+        res = await data()
+      }
+    }
+
     if (res && res.code === 200 && res.data && !res.data.disabled) {
       setMe(res.data)
       setSkipLogin(true)
@@ -65,7 +82,7 @@ const UserOrGuest = (props: { children: JSXElement }) => {
         })
         setSkipLogin(true)
       } else {
-        // 非分享页一律重定向至登录页
+        // 访客被显式禁用且未登录时，重定向至登录页
         const redirectPath = pathname()
         if (
           redirectPath &&

@@ -101,8 +101,7 @@ async function rateLimitMiddleware(c: any, next: () => Promise<void>) {
   }
 
   if (trafficLimitMb > 0) {
-    const len =
-      parseInt(c.res?.headers?.get("content-length") || "0", 10) || 0
+    const len = parseInt(c.res?.headers?.get("content-length") || "0", 10) || 0
     if (len > 0) {
       const tRec = ipTraffic.get(ip)
       if (!tRec || now - tRec.start > 3600000) {
@@ -127,7 +126,10 @@ export function setupRouter(app: Hono) {
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'",
     )
-    c.res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    c.res.headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    )
     c.res.headers.set("Referrer-Policy", "no-referrer")
   })
 
@@ -144,7 +146,9 @@ export function setupRouter(app: Hono) {
         const env = (c as any).env || {}
         const allowedOriginsRaw =
           env.ALLOWED_ORIGINS ||
-          (typeof process !== "undefined" ? process.env?.ALLOWED_ORIGINS : "") ||
+          (typeof process !== "undefined"
+            ? process.env?.ALLOWED_ORIGINS
+            : "") ||
           ""
         const allowedOrigins = allowedOriginsRaw
           .split(",")

@@ -41,9 +41,11 @@ function detectEdgeKVCtor(): any {
 const MODULE_LEVEL_EDGE_KV = detectEdgeKVCtor()
 console.log(
   `[ESA/entry] module loaded, module-level EdgeKV: ${!!MODULE_LEVEL_EDGE_KV}, ` +
-    `globalThis keys: ${Object.keys(globalThis as any)
-      .filter((k) => /kv|edge|storage|env|alibaba|worker/i.test(k))
-      .join(",") || "(none matched)"}`,
+    `globalThis keys: ${
+      Object.keys(globalThis as any)
+        .filter((k) => /kv|edge|storage|env|alibaba|worker/i.test(k))
+        .join(",") || "(none matched)"
+    }`,
 )
 function getEdgeKVCtorAtRequestTime(): any {
   if (MODULE_LEVEL_EDGE_KV) return MODULE_LEVEL_EDGE_KV
@@ -66,7 +68,10 @@ function getEdgeKVCtorAtRequestTime(): any {
  * - 模块级缓存在函数实例复用期间有效，冷启动后为空（正常行为）
  */
 const MODULE_KV_CACHE_TTL_MS = 60_000
-const moduleKvCache = new Map<string, { value: string | null; timestamp: number }>()
+const moduleKvCache = new Map<
+  string,
+  { value: string | null; timestamp: number }
+>()
 
 function getModuleKvCache(key: string): string | null | undefined {
   const entry = moduleKvCache.get(key)
@@ -163,7 +168,10 @@ export default {
     const edgeKvCtor = getEdgeKVCtorAtRequestTime()
     if (env && typeof env !== "undefined") {
       const namespace =
-        env.KV_NAMESPACE || env.ESA_KV_NAMESPACE || env.EDGEONE_KV_NAME || "openlistnext"
+        env.KV_NAMESPACE ||
+        env.ESA_KV_NAMESPACE ||
+        env.EDGEONE_KV_NAME ||
+        "openlistnext"
       if (edgeKvCtor) {
         try {
           const edgeKv = new edgeKvCtor({ namespace })
@@ -183,7 +191,10 @@ export default {
           try {
             env.OPENLISTNEXT_KV = wrappedKv
           } catch (e) {
-            console.warn(`[ESA/req:${reqId}] env.OPENLISTNEXT_KV assign failed (env may be frozen):`, e)
+            console.warn(
+              `[ESA/req:${reqId}] env.OPENLISTNEXT_KV assign failed (env may be frozen):`,
+              e,
+            )
           }
           ;(globalThis as any).OPENLISTNEXT_KV = wrappedKv
           if (isApiRequest) {
@@ -212,7 +223,9 @@ export default {
         )
       }
     } else if (isApiRequest) {
-      console.warn(`[ESA/req:${reqId}] env is undefined/null — fetch signature may be wrong`)
+      console.warn(
+        `[ESA/req:${reqId}] env is undefined/null — fetch signature may be wrong`,
+      )
     }
 
     const response = await app.fetch(request, env, context)
